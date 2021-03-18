@@ -1,0 +1,112 @@
+# SARAR regression
+
+Load the non-spatial data. Note that numeric variables have been log-transformed. For data description (including data collection, filtering, and merging), please see (link).
+
+```{r}
+library(spdep)
+library(sp)
+library(maptools)
+library(rgdal)
+
+load("data/df_merged_filtered_logged.RData")
+```
+
+Load the spatial data.
+
+```{r}
+# read shapefile of Zillow neighborhoods
+zillow_poly <- readShapePoly('data/Zillow_All_States.shp')
+
+# make the RegionID numeric
+zillow_poly$RegionID <- as.numeric(as.character(zillow_poly$RegionID))
+
+# drop some columns that we don't need
+drops <- c("fid","State", "County", "City", "Name", "layer", "path", "population") 
+zillow_poly <- zillow_poly[,!(names(zillow_poly) %in% drops)] 
+
+# remove duplicate regionIDs
+df <- df[!duplicated(df[ , c("RegionID")]),]
+
+# merge the spatial data to the non-spatial data
+df_spatial <- sp::merge(zillow_poly, df, by="RegionID", duplicateGeoms=T)
+
+# get rid of extra regions
+df_spatial <- df_spatial[df_spatial$RegionID %in% df$RegionID,]
+```
+
+To save computation time, subset the city of Charlotte, North Carolina. 
+
+```{r}
+# North Carolina only
+df_nc <- df_spatial[df_spatial@data$State %in% c("NC"),]
+
+# Charlotte only
+df_charlotte <- df_nc[df_nc@data$CountyName %in% c("Mecklenburg County"),]
+```
+
+Plot the ZHVI for Mecklenburg County. This is the median price per square foot. 
+
+```{r}
+spplot(df_charlotte, "price", main = "", sub = "ZHVI", col = "black")
+```
+
+Spatial autoregression models account for the influence of adjacent observations. Therefore, we need to know which observations (Zillow neighborhoods) are next to which. The weights matrix $W$ tells us which observations are adjacent. 
+
+```{r}
+# calculate weights matrix
+list.queen<-poly2nb(df_charlotte, queen=TRUE) # options are queen or rook
+
+# convert to list
+W<-nb2listw(list.queen, style="W", zero.policy=T)
+```
+
+Before we continue, let's check for spatial autocorrelation in the first place. If there is no spatial autocorrelation, then there is no point in making a spatial autoregressive model!
+
+```{r}
+# Linear model without spatial autocorrelation
+mod_linear <- lm(log(price) ~ 
+            median_number_rooms
+           + popden
+           + park
+           + tcc
+           + ndvi
+           + open_space_fraction,
+           data = df_charlotte@data)
+summary(mod_linear)
+```
+
+Check for spatial autocorrelation using Moran's I test. 
+
+```{r}
+# moran's test
+moran.lm <- lm.morantest(mod_linear, W, alternative="two.sided", zero.policy = T)
+print(moran.lm)
+```
+
+Moran tells us that the data *are* spatially autocorrelated. So, let's make a spatial autoregressive model. 
+
+We will incorporate the weights matrix $W$ to create a spatial autoregressive model. 
+
+```{r}
+# This might take a long time
+mod_spatial <- sacsarlm(log(price) ~ 
+            median_number_rooms
+           + popden
+           + park
+           + tcc
+           + ndvi
+           + open_space_fraction,
+           data = df_charlotte,
+           listw = W,
+           zero.policy = T)
+summary(mod_spatial, Nagelkerke=T)
+```
+
+It is important to remember that coefficients of spatial autoregressive models are interpreted differently than linear models. We must consider the direct, indirect, and total effects of each variable (see paper for explanation). 
+
+```{r}
+# calculate the direct, indirect, and total effects
+summary(impacts(mod, listw = W, R=2000), zstats=TRUE, short=TRUE)
+```
+
+
