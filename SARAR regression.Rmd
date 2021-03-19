@@ -1,6 +1,6 @@
 # SARAR regression
 
-Load the non-spatial data. Note that numeric variables have been log-transformed. For data description (including data collection, filtering, and merging), please see (link).
+Load the data. Note that numeric predictor variables have been log-transformed. For data description (including data collection, filtering, and merging), please see [the paper](https://www.sciencedirect.com/science/article/pii/S1618866720306117).
 
 ```{r}
 library(spdep)
@@ -44,7 +44,7 @@ df_nc <- df_spatial[df_spatial@data$State %in% c("NC"),]
 df_charlotte <- df_nc[df_nc@data$CountyName %in% c("Mecklenburg County"),]
 ```
 
-Plot the ZHVI for Mecklenburg County. This is the median price per square foot. 
+Plot the ZHVI for Mecklenburg County. This is the median home price per square foot. 
 
 ```{r}
 spplot(df_charlotte, "price", main = "", sub = "ZHVI", col = "black")
@@ -88,7 +88,6 @@ Moran tells us that the data *are* spatially autocorrelated. So, let's make a sp
 We will incorporate the weights matrix $W$ to create a spatial autoregressive model. 
 
 ```{r}
-# This might take a long time
 mod_spatial <- sacsarlm(log(price) ~ 
             median_number_rooms
            + popden
@@ -102,11 +101,11 @@ mod_spatial <- sacsarlm(log(price) ~
 summary(mod_spatial, Nagelkerke=T)
 ```
 
-It is important to remember that coefficients of spatial autoregressive models are interpreted differently than linear models. We must consider the direct, indirect, and total effects of each variable (see paper for explanation). 
+It is important to remember that coefficients of spatial autoregressive models are interpreted differently than those of linear models. We must consider the direct, indirect, and total effects of each variable (see paper for explanation). 
 
 ```{r}
 # calculate the direct, indirect, and total effects
-summary(impacts(mod, listw = W, R=2000), zstats=TRUE, short=TRUE)
+summary(impacts(mod_spatial, listw = W, R=2000), zstats=TRUE, short=TRUE)
 ```
 
 
